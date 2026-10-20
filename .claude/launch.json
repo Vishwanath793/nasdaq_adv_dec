@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "backend", "runtimeExecutable": "node", "runtimeArgs": ["server/index.js"], "port": 3101 },
+    { "name": "ui", "runtimeExecutable": "npx", "runtimeArgs": ["vite", "--port", "5183", "--strictPort"], "port": 5183 }
+  ]
+}

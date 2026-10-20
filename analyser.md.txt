@@ -1,0 +1,1232 @@
+I reviewed your current conviction and opening-confirmation code. The prompt below preserves its adjustable factors, score explanations, tradeability checks, paper trading, and report cards, while adapting the data model for Nasdaq.
+
+**One principle matters: fetch broadly, but only increase conviction when the additional data provides useful, independent evidence.** Ten overlapping indicators should not count as ten confirmations.
+
+Two corrections to your timing: Nasdaq generally stops MOO/LOO cancellations at **09:25 ET**, MOO entry at **09:28**, and permits restricted LOO entry until **09:29:30**. Early NOII messages lack the near/far prices disseminated from 09:28. [Nasdaq rules](https://listingcenter.nasdaq.com/rulebook/nasdaq/rules/Nasdaq%20Equity%204), [NOII dissemination details](https://www.nasdaqtrader.com/TraderNews.aspx?id=ETA2021-15).
+
+For the implementation, a practical starting combination to evaluate is **Alpaca SIP for consolidated trades/quotes, Databento for auction/depth data, and SEC EDGAR for filings**. Access depends on subscriptions and dataset entitlements; ordinary quote feeds must not be assumed to include NOII. [Alpaca streaming documentation](https://docs.alpaca.markets/us/docs/real-time-stock-pricing-data), [Databento imbalance schema](https://databento.com/docs/schemas-and-data-formats/imbalance), [SEC APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces).
+
+Paste this into Claude Opus with access to your current repository:
+
+```text
+You are my senior market-data engineer, quantitative research engineer, and full-stack developer.
+
+Build a Nasdaq pre-market conviction analyzer and opening-window confirmation system, using my existing NSE Advance/Decline app as the reference.
+
+I want a working application with real API integrations, explainable conviction scores, recording, replay, and report cards. Do not stop at an architecture proposal or a UI mockup.
+
+PRIMARY OBJECTIVE
+
+Identify Nasdaq-listed stocks with credible directional setups before the regular-session open, then use the first five minutes of regular trading to confirm or reject those setups.
+
+Collect as much relevant data as the configured APIs legitimately provide. Inspect their full capabilities rather than using only last price, percentage change, and volume.
+
+Every useful field should have an explicit role:
+- Directional evidence.
+- Liquidity or execution evidence.
+- Risk filter.
+- Market/regime context.
+- Research-only feature.
+- Display-only information.
+
+Do not indiscriminately add every available field to the score. Explain exclusions, redundancy, stale data, and unsupported interpretations.
+
+Build an analyzer and PAPER simulation first. Live order execution is outside this request.
+
+1. INSPECT MY EXISTING APP FIRST
+
+If available, inspect:
+- CLAUDE.md and DEVLOG.md.
+- src/utils/conviction.js.
+- src/utils/confirmation.js.
+- src/utils/decision.js.
+- src/utils/tradeability.js.
+- src/utils/strategies.js.
+- src/utils/tradePlan.js.
+- src/utils/risk.js.
+- src/utils/reportCard.js.
+- src/utils/openingWindow.js.
+- src/utils/paperLedger.js.
+- src/core/openingCollector.js.
+- src/core/marketContext.js.
+- src/core/recorder.js.
+- Relevant server routes, tests, and UI components.
+
+Explain briefly what can be reused and what must change for US markets.
+
+The existing app has:
+- Direction-aware pre-open conviction.
+- Adjustable factor switches and weights.
+- Equal-weight defaults for several core factors.
+- Missing-factor exclusion and weight rescaling.
+- Explanations for individual factors.
+- Tradeability blocks and score caps.
+- Separate opening-window confirmation.
+- Strategy-specific decisions and trade plans.
+- Paper fills, risk limits, recordings, replay, and report cards.
+
+Preserve these strengths.
+
+Do not transfer NSE-specific assumptions:
+- NSE gap-size sweet spots are not validated Nasdaq thresholds.
+- NSE delivery percentage has no automatic US equivalent.
+- FII/DII flows have no direct stock-level US replacement.
+- Stock-futures OI logic must not be relabelled as equity-options positioning.
+- NSE circuit limits are not equivalent to US LULD.
+- NSE buy/sell order quantities are not equivalent to consolidated quotes or Nasdaq auction imbalance.
+- Zerodha charges, MIS leverage, holidays, and session times do not apply.
+
+Default to a separate Nasdaq project with the NSE repository as a read-only reference. Do not modify its trading setup, TV research, credentials, scheduled orders, or existing uncommitted work.
+
+If repository access is unavailable, proceed from this specification and explicitly identify what could not be inspected.
+
+2. DEFINE THE UNIVERSE CORRECTLY
+
+Default universe:
+- Active Nasdaq-listed common equities.
+- Explicitly configurable treatment of ADRs.
+- Separate lists for ETFs and other security types.
+- Exclude test symbols, warrants, rights, preferred shares, and units unless enabled.
+
+Nasdaq-listed is not the same as Nasdaq-100, and Nasdaq-listed stocks trade on multiple venues.
+
+Provide:
+- All eligible Nasdaq-listed stocks.
+- Nasdaq-100 view if licensed constituent data is available.
+- Liquid-stock view.
+- Small-cap/high-volatility view.
+- User watchlists.
+
+Store stable instrument identifiers and effective-dated ticker mappings. Handle symbol changes, delistings, IPOs, splits, and security-type changes.
+
+Do not rank ETFs, microcaps, and liquid large caps against one undifferentiated baseline.
+
+3. API DISCOVERY AND PROVIDER SELECTION
+
+Before implementing a provider, read its current official documentation.
+
+Create a capability matrix containing:
+- Provider and product.
+- Actual documented endpoint, SDK method, dataset, or stream.
+- Required subscription/entitlement.
+- Real-time versus delayed.
+- Exchanges and sessions covered.
+- Historical depth.
+- Available fields and units.
+- Pagination, rate limits, and subscription limits.
+- Expected timestamps and update frequency.
+- Retention/display restrictions.
+- Features enabled.
+- Fallback behavior.
+- Whether access has actually been tested.
+
+Never invent an endpoint or assume a paid capability exists on a free plan.
+
+Evaluate these starting candidates:
+
+A. Consolidated equities data:
+- Alpaca SIP or another documented consolidated US equities provider.
+- Trades, quotes, historical bars, snapshots, reference data.
+- Verify extended-hours coverage and trade-condition handling.
+- Label IEX-only data as limited venue coverage.
+- Never silently substitute IEX data for SIP and retain the same volume interpretation.
+
+B. Nasdaq auction and depth:
+- Databento XNAS.ITCH or another licensed Nasdaq TotalView/NOII provider.
+- Verify supported imbalance, order-book, trade, status, and reference schemas.
+- Check live and historical entitlements separately.
+- A Nasdaq venue book is not consolidated depth across all venues.
+- Map normalized imbalance fields to Nasdaq-specific semantics.
+
+C. Company and event enrichment:
+- Evaluate FMP, Finnhub, or another documented vendor for profiles, float, earnings, estimates, corporate actions, and news.
+- Choose a primary provider per data domain rather than paying for redundant feeds without a purpose.
+- Verify each field’s availability and update schedule.
+
+D. Official filings:
+- SEC EDGAR submissions and company facts.
+- Retrieve actual filing documents when structured facts are insufficient.
+- Use server-side access, compliant identification, caching, and fair-access controls.
+
+E. Optional specialized data:
+- OPRA options data.
+- Licensed futures/index data.
+- Securities lending and borrow availability.
+- Published short-interest data.
+- Economic-release calendars and consensus estimates.
+
+Use adapters so providers can be replaced.
+
+Provide operating profiles:
+- DEMO: deterministic simulated data, clearly labelled.
+- LIMITED: restricted coverage or delayed research data.
+- CORE: entitled consolidated real-time equities data.
+- ENHANCED: core plus NOII/depth and selected enrichment.
+
+Show which features work in each profile.
+
+If keys are missing, build and test the adapters with recorded fixtures, provide exact setup instructions, and clearly distinguish implemented from live-verified integrations.
+
+Do not purchase subscriptions automatically.
+
+4. MARKET CLOCK AND SNAPSHOTS
+
+Store UTC timestamps and use America/New_York for trading-session logic. Display both ET and Asia/Kolkata.
+
+Use a verified exchange calendar with holidays, early closes, and daylight-saving transitions. Never hardcode a permanent ET-to-IST offset.
+
+Support these distinct phases:
+- Previous regular session.
+- Previous after-hours session.
+- Optional overnight session, if supplied.
+- 04:00–09:30 ET pre-market.
+- Opening auction.
+- Regular session.
+
+Keep overnight venue coverage and trade-date attribution explicit.
+
+Create immutable decision snapshots:
+- 09:20 ET: preliminary watchlist.
+- 09:25 ET: early auction monitoring.
+- 09:28 ET: main pre-open conviction snapshot.
+- Configurable final pre-open snapshot, default 09:29:50 ET.
+- 09:30–09:35 ET: opening-window collection.
+- 09:35 ET: sealed confirmation decision.
+
+Continue live monitoring between snapshots. Do not freeze the entire analyzer at 09:28.
+
+Model early NOII versus full NOII:
+- Early information begins around 09:25.
+- Full dissemination begins around 09:28.
+- Near/far price placeholders in early messages are unavailable values, not real zero-dollar prices.
+- Reverify current exchange rules during implementation.
+
+Handle halts, IPOs, missing auctions, and delayed openings explicitly. Do not assume every symbol produces a normal auction print at exactly 09:30.
+
+The 09:35 window is [09:30:00, 09:35:00).
+Specify the collection grace period and actual decision publication timestamp.
+Never simulate a fill before the decision existed.
+
+5. CAPTURE BROAD, TRACEABLE DATA
+
+Maintain raw, normalized, and derived layers.
+
+For each observation retain, where applicable:
+- Instrument ID and symbol.
+- Provider, dataset, feed, and venue.
+- Event timestamp.
+- Provider publication timestamp.
+- Local receive timestamp.
+- Sequence number or event ID.
+- Units and adjustment basis.
+- Session and trading date.
+- Quality flags.
+- Raw-record reference.
+
+For historical fundamentals and news, preserve both effective date and first-known/publication time.
+
+A later historical API response must not silently replace what was known at an earlier decision.
+
+Use one canonical source for each calculation. Do not add duplicate SIP and direct-feed trades together.
+
+6. PRE-MARKET PRICE AND PARTICIPATION FEATURES
+
+Collect and derive:
+
+Price:
+- Previous official regular-session close.
+- Corporate-action-consistent comparison close.
+- Latest eligible trade and its age.
+- Bid, ask, midpoint, and quote age.
+- Gap from the comparison close.
+- Gap measured in ATR units.
+- Previous after-hours move.
+- Overnight move when available.
+- Pre-market OHLC and VWAP.
+- Distance from pre-market high/low and VWAP.
+- Returns over recent 1/5/15/30/60-minute windows.
+- Trend consistency, pullback depth, recovery, and rejection.
+- Position relative to previous-day range and historical levels.
+- Distance from 20/50/200-day averages where enough history exists.
+
+Participation:
+- Shares traded.
+- Dollar turnover using eligible executions.
+- Trade count and trade-size distribution.
+- Same-clock-time relative volume.
+- Same-clock-time relative dollar volume.
+- Last 5/15/30-minute volume acceleration.
+- Participation after news versus before news.
+- Float turnover if float is reliable and dated.
+- Time since last trade.
+- Concentration in a few large prints.
+- Price movement achieved per unit of activity.
+
+Calculate:
+preMarketRVOL(t) =
+today's eligible cumulative pre-market volume through t
+/
+historical baseline cumulative volume through the same ET time.
+
+Use comparable completed sessions and a consistent feed/universe. Show sample size and baseline method.
+
+Do not call pre-market volume divided by full-day average volume “same-time RVOL.” It can be a separate feature with a different name.
+
+Use robust baselines and minimum-history requirements.
+Distinguish a genuine zero-volume session from a missing-data session.
+Prevent tiny denominators from producing meaningless extreme scores.
+
+7. LIQUIDITY AND ORDER-FLOW FEATURES
+
+Where available:
+- Bid/ask spread in dollars and basis points.
+- Spread stability.
+- Top-of-book sizes.
+- Multi-level depth.
+- Depth imbalance at configured distances from the touch.
+- Book replenishment and liquidity withdrawal.
+- Time-weighted book imbalance.
+- Quote/trade intensity.
+- Estimated executable size and impact for a proposed order.
+- Approximate signed trade imbalance if defensibly derived.
+
+If aggressor side is inferred, document the algorithm and its uncertainty.
+Do not label inferred buying as “institutional buying.”
+
+Verify quote-size units and instrument round-lot metadata; do not assume every provider reports shares or that every round lot is 100 shares.
+
+Distinguish:
+- Displayed resting liquidity.
+- Executed trade flow.
+- Auction imbalance.
+
+Do not infer spoofing or hidden institutional intent from a single book snapshot.
+
+8. OPENING-AUCTION FEATURES
+
+Capture the complete available NOII series:
+- Paired shares.
+- Imbalance shares and side.
+- Current reference price.
+- Near/far indicative prices when available.
+- Auction type.
+- Relevant status/variation fields.
+- Message timestamp and age.
+
+Derive:
+- Signed imbalance.
+- Clearly defined normalized imbalance measures.
+- Imbalance relative to typical auction size.
+- Paired-share growth.
+- Imbalance persistence and side changes.
+- Rate of change in reference/indicative prices.
+- Auction-price divergence from pre-market midpoint/VWAP.
+- Near/far divergence when meaningful.
+- Agreement between auction direction and executed pre-market flow.
+- Change from 09:25 to 09:28 to the final snapshot.
+
+Define all denominators and handle zero/sentinel values explicitly.
+
+Do not represent paired shares plus imbalance as the full visible supply-and-demand curve.
+
+Keep:
+- Pre-market trade gap.
+- Indicative auction gap.
+- Actual official opening gap.
+
+These are different observations available at different times.
+
+After the cross, record the actual auction price/volume when identifiable. Do not use the realized auction result in earlier conviction snapshots.
+
+If NOII is unavailable:
+- Mark it unavailable.
+- Continue a documented non-auction profile.
+- Never synthesize it from quote sizes or present a proxy as NOII.
+
+9. NEWS, EARNINGS, AND CORPORATE EVENTS
+
+Collect:
+- Earnings release time.
+- Actual versus consensus EPS and revenue.
+- Guidance changes when documented.
+- Analyst actions.
+- Material contracts and product announcements.
+- M&A.
+- Regulatory or clinical decisions.
+- Offerings, dilution announcements, and financing.
+- Bankruptcy or distress events.
+- Splits, dividends, and other corporate actions.
+- Relevant SEC filings.
+- Peer and sector news.
+
+Deduplicate syndicated stories.
+Distinguish publication time, first-seen time, and later updates.
+Link every catalyst to its source.
+
+For catalyst scoring consider:
+- Specificity.
+- Materiality.
+- Novelty.
+- Source reliability.
+- Timing.
+- Measured surprise, if valid expectations exist.
+- Price/volume response.
+- Whether the event was already reflected in prior trading.
+
+Do not give every earnings announcement a bullish score.
+Do not treat every shelf registration as an executed offering.
+
+If using an LLM:
+- Restrict it to structured extraction and evidence-linked summaries.
+- Treat article and filing text as untrusted data.
+- Store model/prompt versions and source identifiers.
+- Return unknown when facts are missing.
+- Keep numeric market-data calculations deterministic.
+- Do not let an LLM invent a catalyst or override hard tradeability blocks.
+
+10. MARKET, SECTOR, AND HISTORICAL CONTEXT
+
+Collect where entitled:
+- QQQ, SPY, IWM and relevant sector/industry ETFs.
+- NQ/ES futures with explicit contract and reference-session definitions.
+- Licensed volatility measures.
+- Rates, currency, or other macro context when relevant.
+- Economic calendar and release times.
+- Actual/consensus surprises only after publication.
+- Nasdaq-universe advance/decline breadth.
+- Sector participation and relative strength.
+- Percentage above pre-market VWAP.
+- Positive/negative gap distribution.
+
+Calculate stock-relative strength against both market and sector benchmarks over matching windows.
+
+Show tracked-universe breadth, denominator, stale exclusions, and coverage.
+Do not present a partial watchlist as the whole Nasdaq market.
+
+Historical context:
+- ATR and realized volatility.
+- Prior close location.
+- Multi-session returns.
+- Previous-day relative volume.
+- Historical gap continuation/fade behavior.
+- Earnings-day versus ordinary-day behavior.
+- Comparable regime/liquidity cohorts.
+
+Avoid hardwiring claims such as “higher volatility always means bearish.”
+
+11. OPTIONS, SHORT INTEREST, AND BORROW
+
+Add these only when genuine data and timestamps exist:
+- Options volume and OI by expiry/strike.
+- Put/call measures with explicit definitions.
+- IV, skew, term structure, and expected-move estimates.
+- Unusual volume versus historical baselines.
+- Published short interest, publication date, and settlement date.
+- Days to cover and dated float.
+- Broker shortability, borrow availability, and borrow fees.
+- Short-sale restriction status where available.
+
+Check instrument-specific options trading hours. Do not present yesterday's options activity as fresh pre-market flow.
+
+OI must carry its actual as-of date.
+Call volume alone is not proof of bullish buying.
+Short-sale volume is not short interest.
+Estimated dealer positioning is model-dependent and must be labelled accordingly.
+
+Borrow/shortability affects execution eligibility separately from directional conviction.
+
+12. CONVICTION ENGINE
+
+Compute separate:
+- Long setup score.
+- Short setup score.
+- Continuation versus fade/reversal setup classification.
+- Opening confirmation score.
+- Data coverage.
+- Data quality.
+- Execution eligibility.
+
+A score of 85 is not an 85% success probability.
+
+Use explainable groups such as:
+- Price structure.
+- Participation.
+- Liquidity/flow.
+- Auction evidence.
+- Catalyst.
+- Market/sector alignment.
+- Historical context.
+- Optional positioning.
+
+Start with a transparent baseline. Provide equal-group weights and configurable research weights.
+Compare against the existing app's equal-factor approach.
+
+Group weighting should prevent a category with many similar fields from dominating just because the API exposes more columns.
+
+Within each group:
+- Normalize factors on documented scales.
+- Apply direction- and strategy-specific transforms.
+- Account for reliability and freshness.
+- Limit redundant contributions.
+
+An acceptable starting structure is:
+groupScore = weighted average of usable factor values.
+rawScore = 100 × weighted average of usable group scores.
+
+Define coverage separately from score:
+- Coverage of the fixed configured profile.
+- Coverage of mandatory inputs.
+- Coverage of optional enrichment.
+- Broader capability coverage.
+
+Do not shrink the expected denominator simply because an API failed.
+
+Missing data:
+- Never silently equals zero or neutral.
+- Has a reason: unsupported, not entitled, stale, delayed, not applicable, failed, or insufficient history.
+- Does not automatically make a stock bullish or bearish.
+- Can prevent a high-conviction label or executable decision.
+
+Use a minimum-evidence policy so one excellent factor cannot produce “strong conviction.”
+Different coverage profiles should not be blindly ranked together.
+
+If using a conservative adjusted score, document and test the adjustment separately. Keep the raw score visible.
+
+For every factor expose:
+- Key, group, and description.
+- Raw value and units.
+- Direction/strategy.
+- Transformation.
+- Weight and contribution.
+- Provider/field lineage.
+- Event/as-of/receive times.
+- Freshness and quality.
+- Missing reason.
+- Correlation family.
+- Human-readable explanation.
+
+Store score version, configuration hash, feature version, and snapshot ID.
+
+New API fields enter a feature registry first. Assign them a role, document their meaning, and enable score contribution only through a versioned decision—not silently on discovery.
+
+13. TRADEABILITY AND OPENING CONFIRMATION
+
+Hard eligibility checks take precedence over score:
+- Halt or suspended trading.
+- Stale or delayed critical data.
+- Insufficient observation window.
+- Unresolved corporate-action/reference-price issue.
+- Invalid or persistently crossed market.
+- Excessive spread or insufficient liquidity.
+- Excessive projected slippage.
+- Missing critical status information.
+- Risk-limit violation.
+- Inadequate borrow/shortability for a simulated short.
+
+Handle LULD using its actual session applicability.
+Unknown extended-hours LULD values must not be interpreted as unrestricted safety.
+
+At 09:35, evaluate:
+- Opening range high/low.
+- Five one-minute candles or exact trade-derived equivalent.
+- Regular-session VWAP.
+- Opening-window RVOL.
+- Close location and rejection wicks.
+- Market and sector confirmation.
+- Liquidity changes.
+- Auction-to-continuous-trading follow-through.
+- Distance from VWAP and ATR-based extension.
+
+Separate auction volume from continuous-session volume and provide explicit inclusion policies. Historical baselines must use the same policy.
+
+Implement paper research strategies:
+- Opening-range breakout/breakdown.
+- Gap pullback and recovery.
+- Opening momentum.
+- Gap failure/reversal as a separate configurable strategy.
+
+Default decision: NO TRADE.
+Other outcomes: WATCH, LONG CANDIDATE, SHORT CANDIDATE, PAPER ENTRY ELIGIBLE.
+
+Provide strategy-specific reasons, invalidation conditions, entry triggers, stops, and targets.
+Do not combine continuation and reversal evidence into one ambiguous score.
+
+14. PAPER SIMULATION AND RISK
+
+Use USD, configurable risk limits, and current broker-specific cost assumptions.
+
+Require:
+- Risk per trade.
+- Maximum daily loss.
+- Position and trade-count limits.
+- Sector/concentration limits.
+- Maximum spread/slippage.
+- Entry expiry.
+- Minimum reward/risk after costs.
+- Kill switch and end-of-day handling.
+
+Fill buys at ask-side executable prices and sells at bid-side executable prices, with latency and slippage assumptions.
+
+Never fill at a favorable historical price before the order existed.
+Do not reuse the same displayed liquidity repeatedly for unlimited fills.
+Model partial fills and participation caps.
+
+A top-of-book simulation must not pretend to know deeper liquidity.
+A touched limit price does not guarantee a fill.
+Stops may execute beyond their trigger.
+
+Keep hypothetical short signals separate from borrow-verified paper entries.
+
+15. DATA PIPELINE AND RELIABILITY
+
+Use streaming for fast market data and REST for backfills, reference data, and slower enrichment.
+
+Implement:
+- Provider-specific rate limiting.
+- Pagination and batching.
+- Retry/backoff with jitter.
+- Subscription management.
+- Reconnect gap detection.
+- Deduplication.
+- Out-of-order event handling.
+- Trade corrections/cancellations.
+- Sequence-gap detection where supported.
+- Clock-drift monitoring.
+- Schema validation.
+- Per-field freshness policies.
+- Explicit feed-switch events.
+- Idempotent restart behavior.
+
+Screen broadly, then deepen collection for candidates.
+Do not subscribe to every option contract and every full-depth symbol without a resource plan.
+
+Provide API usage, storage estimates, and configurable budget controls.
+Graceful degradation must never silently change the meaning of a feature.
+
+Keep secrets server-side and redact logs.
+Do not expose provider keys through the frontend or committed files.
+
+16. UI
+
+Create:
+- Pre-market analyzer.
+- Auction monitor.
+- Opening confirmation.
+- Stock detail.
+- Paper decisions/positions.
+- Report card.
+- Provider health/settings.
+
+Main table:
+- Symbol and company.
+- Security type, sector, market cap, float date.
+- Gap and ATR-normalized gap.
+- Pre-market dollar volume and same-time RVOL.
+- Spread and liquidity.
+- Catalyst.
+- Auction direction/persistence if available.
+- Long/short conviction.
+- Coverage and quality.
+- Opening confirmation.
+- Eligibility and primary reason.
+
+Stock detail:
+- Extended-hours and regular-session chart.
+- Clearly separated VWAPs and ranges.
+- Auction timeline.
+- Factor contributions.
+- Supporting and opposing evidence.
+- Catalyst sources.
+- Data lineage and missing data.
+- Paper plan and invalidation levels.
+
+Show ET and IST.
+Make REAL-TIME, DELAYED, PARTIAL, STALE, and DEMO states unmistakable.
+A user should understand why a stock scored highly without reading code.
+
+17. RECORDING, REPLAY, AND VALIDATION
+
+Persist:
+- Raw events where licensing allows.
+- News/filing first-seen evidence.
+- Reference-data versions.
+- Features.
+- Immutable snapshots.
+- Scores/configuration versions.
+- Decisions and rejection reasons.
+- Paper orders/fills.
+- Subsequent outcomes.
+
+Replay through the same feature/scoring functions used live.
+
+Prevent look-ahead:
+- Use only information available by the decision publication time.
+- Preserve original snapshots when later corrections arrive.
+- Keep corrected research versions separately.
+- Do not use today's float, constituents, or revised fundamentals in historical decisions without disclosure.
+
+Evaluate:
+- Returns at explicitly defined horizons.
+- MFE and MAE.
+- Continuation/fade rates.
+- Score-band results.
+- Rank correlation.
+- Net expectancy after realistic costs.
+- Drawdown and execution shortfall.
+- Coverage failures and no-trade rates.
+- Results by liquidity, market cap, strategy, and regime.
+
+Compare:
+- Simple gap/volume baseline.
+- Price plus volume.
+- Addition of market/sector context.
+- Addition of news.
+- Addition of NOII.
+- Addition of depth.
+- Addition of options/positioning.
+
+Use ablation tests to show whether expensive data improves results.
+Use chronological walk-forward validation and an untouched test period.
+Report sample sizes and uncertainty.
+Do not optimize dozens of weights on a few trading days.
+
+18. TESTS AND DELIVERABLES
+
+Tests must cover:
+- ET/IST conversion across DST.
+- Holidays and early closes.
+- Snapshot boundaries.
+- Events arriving after a decision.
+- Early NOII placeholders.
+- Buy/sell auction imbalance mapping.
+- Halts and missing auctions.
+- Duplicate/corrected trades.
+- Reconnect gaps.
+- Quote-size units.
+- Splits and adjusted comparisons.
+- Same-time RVOL and missing baselines.
+- Missing/stale-factor coverage.
+- No high-conviction label from inadequate evidence.
+- No future-information leakage.
+- Feed switching.
+- Restart/replay determinism.
+- Paper-fill timing and liquidity limits.
+
+Deliver:
+- Working application.
+- Provider capability matrix.
+- API setup guide.
+- .env.example without secrets.
+- Feature dictionary and source lineage.
+- Scoring specification with formulas.
+- Deterministic demo session.
+- Recording/replay commands.
+- Validation report.
+- Clear list of live-verified versus unverified integrations.
+
+IMPLEMENTATION ORDER
+
+1. Inspect the reference app and document the reuse plan.
+2. Verify APIs, entitlements, and data semantics.
+3. Build calendar, universe, adapters, storage, and demo replay.
+4. Implement core pre-market features and explainable scoring.
+5. Add auction, news, and other available enrichment.
+6. Implement opening confirmation and paper simulation.
+7. Complete UI, report cards, and validation.
+
+Proceed with reasonable, reversible implementation choices.
+Ask only for genuinely blocking credentials, budget, or product decisions.
+If an integration is blocked, complete independent work and report the exact missing capability.
+
+For each stage, state what works, what was tested, and what remains unverified. Do not claim an API works merely because an adapter or fixture test exists.
+```
+Yes—make it **free APIs only, with volume and price–volume behavior driving most of the conviction**.
+
+The main limitation is coverage: Alpaca’s free real-time equities feed is **IEX-only**, while Massive’s free plan provides **end-of-day availability**, including historical aggregates. Neither should be presented as unrestricted live consolidated volume. [Alpaca plans](https://docs.alpaca.markets/us/docs/about-market-data-api), [Massive plans](https://massive.com/pricing?product=stocks).
+
+Also, Twelve Data’s documented extended-hours parameter requires a paid plan and supplies OHLC **without volume**, so it should not be assumed to solve free pre-market volume collection. [Twelve Data documentation](https://twelvedata.com/docs).
+
+**Append this to the previous prompt. It overrides its paid-provider recommendations and scoring priorities:**
+
+```text
+ADDITIONAL REQUIREMENTS: FREE APIs ONLY + VOLUME-FIRST CONVICTION
+
+These requirements override conflicting provider, subscription, and scoring recommendations in the earlier specification.
+
+Build the strongest practical Nasdaq analyzer using relevant, legitimately available FREE APIs, public datasets, and official feeds.
+
+Volume and the relationship between volume, price, and liquidity must drive most of the conviction.
+
+1. STRICT ZERO-COST DATA REQUIREMENT
+
+Use only ongoing free access:
+- Free API tiers.
+- Official public APIs.
+- Official downloadable datasets.
+- Permitted public RSS feeds.
+- Free data access already included with an eligible account.
+
+Do not make the application depend on:
+- Paid subscriptions.
+- Temporary trials.
+- Promotional credits.
+- Payment-card activation.
+- Paid NOII, Level 2, SIP, OPRA, or futures entitlements.
+
+Do not purchase anything.
+
+Investigate all relevant free sources and integrate each source that adds useful, distinct information. Do not add redundant providers merely to increase the API count.
+
+For each evaluated source, document:
+- Available free endpoints.
+- Actual free-tier restrictions.
+- Coverage and delay.
+- Extended-hours support.
+- Whether volume is supplied.
+- Whether volume is consolidated or venue-specific.
+- Historical access.
+- Rate limits.
+- Intended application use.
+- Implemented, tested, unavailable, or excluded status.
+
+“Free real-time prices” does not automatically mean free real-time volume, quotes, historical intraday bars, or pre-market data.
+
+2. FREE SOURCES TO INVESTIGATE
+
+A. Alpaca Basic
+Evaluate:
+- IEX real-time trades, quotes, and bars.
+- Free historical access and its recent-data restrictions.
+- Historical SIP access where actually entitled.
+- Reference data and calendar endpoints.
+- Any genuinely included news capabilities.
+
+Explicitly test session coverage.
+Do not assume IEX supplies the full 04:00–09:30 pre-market.
+Do not describe IEX volume as total US market volume.
+
+B. Massive Basic
+Evaluate its free:
+- Historical daily/minute aggregates.
+- Reference data.
+- Corporate actions.
+
+Use for historical baselines and research where accessible.
+Do not treat end-of-day availability as a live feed.
+
+C. Finnhub free endpoints
+Evaluate actual free access to:
+- Company profiles.
+- Company/market news.
+- Quotes and trade streams.
+- Earnings-related information and other enrichment.
+
+Probe capabilities with the configured key.
+Do not assume historical candles, earnings calendars, consensus estimates, or extended-hours volume are free.
+
+D. Alpha Vantage free endpoints
+Use selectively for genuinely available:
+- Historical data.
+- Company/event enrichment.
+- News or other useful context.
+
+Its limited free request budget makes it a supplementary source.
+Do not assume premium intraday endpoints are included.
+
+E. Twelve Data Basic
+Evaluate free regular-session data, reference information, and useful cross-checks.
+
+Do not rely on paid pre/post-market features.
+A response without volume cannot support volume-based conviction.
+
+F. SEC EDGAR
+Use official submissions, company facts, and filing documents for:
+- Earnings and material disclosures.
+- Financing and dilution events.
+- Corporate actions and company context.
+- Dated shares-outstanding information.
+
+Shares outstanding is not automatically free float.
+Do not invent float when it is unavailable.
+
+G. Nasdaq Trader public resources
+Use documented public resources for:
+- Nasdaq-listed symbol directory.
+- Security classification and reference information.
+- Trading halts.
+- Relevant published regulatory status.
+
+Respect documented refresh frequency.
+An RSS halt feed is not a low-latency exchange status stream.
+
+H. FINRA public data
+Evaluate:
+- Published short-sale volume.
+- Published short-interest information where accessible.
+
+Use only after its publication time.
+Short-sale volume is not short interest and is not a real-time directional signal.
+
+I. FRED/ALFRED and official release sources
+Use for macro history, release context, and point-in-time research where relevant.
+
+Do not present daily macro observations as live futures, live yields, or consensus surprises.
+
+J. Other free providers
+Evaluate additional sources, including FMP or official issuer feeds, if current documentation establishes useful free access.
+
+Do not rely on undocumented website endpoints or a scraping library as if it were a supported exchange API.
+
+Produce one source registry showing what each source contributes and why.
+
+3. HONEST FREE-DATA OPERATING MODES
+
+Support:
+- LIVE LIMITED-COVERAGE.
+- DELAYED CONSOLIDATED RESEARCH.
+- HISTORICAL REPLAY.
+- DEMO.
+
+Display the mode prominently.
+
+At 09:28, a feed delayed by 15 minutes cannot describe 09:28 activity.
+Show its true data cutoff and prevent it from masquerading as current conviction.
+
+If no free source supplies adequate current pre-market volume:
+- State the limitation clearly.
+- Show available historical context.
+- Mark pre-market conviction as insufficient evidence where necessary.
+- Continue with opening-session analysis when usable observations arrive.
+- Offer delayed/replay analysis.
+- Do not fill the gap with invented volume or stale prices.
+
+The app must remain useful without paid auction or depth data.
+
+4. BUILD A COMPREHENSIVE VOLUME FEATURE ENGINE
+
+Compute indicators locally from raw trades or OHLCV whenever possible. Do not waste free API calls fetching indicators that can be calculated from existing data.
+
+Prioritize the following feature families.
+
+A. Absolute participation
+- Cumulative pre-market shares.
+- Cumulative pre-market dollar turnover.
+- Last 1/5/15/30-minute volume.
+- Last 1/5/15/30-minute dollar turnover.
+- Trade count if supplied.
+- Average trade size if supported.
+- Number and proportion of active intervals.
+- Time since the last eligible trade.
+
+Dollar turnover:
+- Prefer sum(price × size) from eligible trades.
+- Otherwise use actual bar VWAP × bar volume if available.
+- If using close × volume, label it an approximation.
+
+B. Same-time relative participation
+- Cumulative same-time pre-market RVOL.
+- Rolling-window RVOL.
+- Same-time relative dollar turnover.
+- Opening-five-minute RVOL.
+- Historical percentile of participation.
+- Robust volume surprise relative to median/MAD where appropriate.
+
+Use:
+RVOL(t) =
+today’s eligible volume from session start through t
+/
+historical baseline volume over the identical session/time interval.
+
+Require the same:
+- Feed scope.
+- Session definition.
+- Trade-condition policy.
+- Adjustment basis.
+- Clock-time window.
+
+Never divide current IEX volume by historical consolidated SIP volume and call the result RVOL.
+
+Use 20 comparable completed sessions as an initial target, configurable.
+Report the actual sample size.
+Handle missing history and genuine zero-volume sessions separately.
+Do not create huge ratios from tiny denominators.
+
+C. Volume acceleration
+- Recent volume per minute versus the preceding window.
+- Recent activity versus the historical same-clock-time expectation.
+- Change in volume rate.
+- Whether activity is expanding, steady, or fading.
+- Participation immediately after a catalyst.
+- Persistence across multiple intervals.
+
+Normalize for the natural increase in activity near the open.
+A rise from 08:00 to 09:25 should not automatically be called unusual acceleration.
+
+D. Volume persistence and concentration
+- Fraction of intervals with meaningful activity.
+- Longest active sequence.
+- Fraction of volume in the largest interval.
+- Fraction concentrated in a few prints, where available.
+- Sustained participation versus a one-print spike.
+- Activity persistence after the initial price jump.
+
+A huge print followed by silence should not receive the same conviction as sustained participation.
+
+E. Price–volume agreement
+Evaluate separately for long and short setups:
+- Rising price with expanding participation.
+- Falling price with expanding participation.
+- Progress in the setup direction per unit of activity.
+- Volume during directional pushes.
+- Volume during countertrend pullbacks.
+- Pullback-volume contraction.
+- Recovery-volume expansion.
+- High-volume rejection.
+- High-volume failure to make further progress.
+- Breakout volume and follow-through.
+- Breakdown volume and follow-through.
+- Failed breaks returning into the previous range.
+
+Volume measures activity, not direction by itself.
+
+F. VWAP and volume-supported acceptance
+- Session VWAP.
+- VWAP slope.
+- Price distance from VWAP.
+- Duration above/below VWAP.
+- Share of traded volume above/below VWAP where measurable.
+- VWAP reclaim/rejection with participation.
+- Repeated VWAP crossings as a choppiness measure.
+- Price acceptance beyond pre-market highs/lows.
+- Volume sustained after crossing a key level.
+
+Separate pre-market VWAP from regular-session VWAP.
+
+G. Volume distribution by price
+Where trade-level data permits:
+- Volume-at-price.
+- Point of control.
+- Value-area estimates.
+- High/low-volume regions.
+- Migration of the volume distribution.
+
+With only OHLCV bars, mark any volume profile as estimated.
+Do not pretend to know exactly where inside a candle its volume traded.
+
+H. Float and capacity context
+Where reliable dated data exists:
+- Volume divided by float.
+- Dollar turnover relative to comparable stocks.
+- Typical dollar liquidity.
+- Proposed order size as a share of observed activity.
+- Liquidity relative to intended position size.
+
+If only shares outstanding is known, label turnover against shares outstanding accordingly.
+
+Low float and high turnover can indicate execution risk as well as opportunity.
+Do not automatically reward them.
+
+I. Historical volume context
+- Previous-day RVOL.
+- Previous-session volume trend.
+- Volume around recent gaps.
+- Volume on prior breakouts/rejections.
+- Historical opening-window participation.
+- Earnings versus non-earnings participation.
+- Typical follow-through following comparable volume shocks.
+
+J. Secondary research indicators
+Optionally calculate:
+- OBV.
+- Money Flow Index.
+- Chaikin Money Flow.
+- Accumulation/distribution measures.
+- Volume-price trend.
+
+These are derived transformations, not independent confirmations.
+Keep them in a capped research family until validated.
+
+5. DO NOT INVENT BUY/SELL VOLUME
+
+If the data contains trades and contemporaneous quotes, implement a documented aggressor-classification estimate where feasible.
+
+Expose:
+- Estimated buy-initiated volume.
+- Estimated sell-initiated volume.
+- Unclassified volume.
+- Classification method and coverage.
+
+With OHLCV only:
+- “Up-bar volume” is not actual buy volume.
+- “Down-bar volume” is not actual sell volume.
+- A candle-based delta is a proxy, not true order flow.
+
+Never claim:
+- Institutional accumulation.
+- Smart-money buying.
+- Hidden buying.
+- Real cumulative volume delta.
+
+Unless the underlying data genuinely supports the specific claim.
+
+6. VOLUME-FIRST SCORE
+
+Create an initial configurable research preset:
+
+- Relative participation: 20%.
+- Participation acceleration and persistence: 15%.
+- Price–volume agreement: 15%.
+- VWAP/volume-supported acceptance: 10%.
+- Price structure and gap context: 15%.
+- Market and sector alignment: 10%.
+- Verified catalyst: 10%.
+- Historical setup context: 5%.
+
+The first four groups allocate 60% to volume-related evidence.
+
+These weights are hypotheses, not validated optimal weights.
+Retain an equal-group baseline for comparison.
+
+Liquidity, stale data, halted status, and execution feasibility remain separate eligibility gates. A high score must not override them.
+
+Within groups:
+- Cap correlated contributions.
+- Avoid rewarding shares, dollar turnover, trade count, and RVOL repeatedly for the same underlying activity.
+- Use bounded transformations.
+- Normalize against appropriate liquidity/size cohorts.
+- Avoid ranking every stock against mega-cap absolute volume.
+
+Volume alone must never decide long versus short.
+Combine it with strategy direction and price response.
+
+Missing mandatory volume data must prevent a “strong volume conviction” label.
+Do not reallocate all missing volume weight to news and gap size.
+
+Keep:
+- Raw score.
+- Volume evidence score.
+- Data coverage.
+- Source quality.
+- Tradeability.
+- Final decision.
+
+Separate free-data profiles when comparing rankings.
+
+7. DISTINGUISH CONTINUATION FROM EXHAUSTION
+
+Explicitly evaluate opposing interpretations:
+
+Possible continuation:
+- Elevated same-time RVOL.
+- Sustained activity across intervals.
+- Price progress in the setup direction.
+- Controlled pullbacks on reduced volume.
+- Recovery/breakout on renewed volume.
+- Stable executable liquidity.
+
+Possible exhaustion or failure:
+- Extreme volume with little price progress.
+- Large rejection wick.
+- Failed breakout on heavy activity.
+- Sharp volume spike followed by inactivity.
+- Excessive distance from VWAP.
+- Widening spreads.
+- Countertrend volume overwhelming the recovery.
+
+Treat these as research patterns requiring validation.
+Do not mechanically reward every increase in volume.
+
+8. OPENING FIVE-MINUTE VOLUME CONFIRMATION
+
+For 09:30–09:35 ET calculate:
+- Cumulative volume and dollar turnover.
+- RVOL versus historical 09:30–09:35 windows.
+- Per-minute volume trajectory.
+- Price-direction consistency.
+- Push versus pullback volume rate.
+- VWAP position.
+- Volume supporting range breaks.
+- Rejection and exhaustion.
+- Pre-market-to-regular-session participation transition.
+
+Keep auction volume separately when identifiable.
+Otherwise label the opening bar as including an inseparable auction contribution.
+Use matching historical baselines.
+
+A strong pre-market score must be rejected or downgraded when the opening behavior contradicts it.
+
+9. FREE-TIER REQUEST PLANNING
+
+Implement a budget-aware scheduler:
+- Cache symbol directories and company metadata.
+- Backfill historical bars incrementally.
+- Fetch slow-changing information infrequently.
+- Use batches where supported.
+- Stream shortlisted candidates where available.
+- Reserve capacity for market/sector benchmarks.
+- Prioritize active candidates near the open.
+- Refresh news based on candidate relevance.
+- Avoid repeated requests from UI rerenders.
+- Respect 429 responses and documented limits.
+
+Show:
+- Remaining quota.
+- Symbols currently monitored.
+- Symbols omitted.
+- History completeness.
+- Data cutoff.
+- Provider failures.
+- Next refresh.
+
+Subscription rotation creates observation gaps.
+Track them and do not call a partially observed window complete.
+
+Do not bypass limits with multiple accounts or rotating keys.
+
+10. VALIDATION AND ACCEPTANCE
+
+Add deterministic scenarios:
+- Large gap with almost no volume.
+- Modest gap with sustained elevated RVOL.
+- One-print volume spike.
+- Strong push, light-volume pullback, strong recovery.
+- High-volume failed breakout.
+- Heavy selling with continued downside progress.
+- Heavy selling followed by absorption-like price behavior, labelled as an inference.
+- Missing pre-market volume.
+- Delayed consolidated data.
+- IEX/SIP baseline mismatch.
+- Split-adjusted volume mismatch.
+- Missing versus zero-volume bars.
+- Repeated cumulative-volume snapshots.
+- Reconnect gaps.
+- Duplicate provider observations.
+- Late historical backfill unavailable at the original decision.
+
+Ensure cumulative snapshots are not repeatedly added as new volume.
+Never sum overlapping feeds into synthetic “total market volume.”
+
+Backtest the 60% volume preset against:
+- Equal groups.
+- Gap-only.
+- Gap plus same-time RVOL.
+- Price plus volume without news.
+- Full free-data model.
+
+Use chronological validation and costs.
+Evaluate each feature family with ablation tests.
+Do not promote more indicators unless they improve held-out results or provide a clear risk/quality function.
+
+FINAL DELIVERABLE
+
+Deliver a working zero-subscription-cost Nasdaq analyzer that:
+- Uses every relevant verified free data capability.
+- Extracts substantial information from volume.
+- Explains both supporting and opposing evidence.
+- Discloses venue coverage and delay.
+- Rejects inadequate evidence.
+- Records decisions for honest replay.
+- Preserves the current app’s adjustable factors, explanations, confirmation, and report-card workflow.
+
+Start by producing the verified free-source capability matrix, then implement the application. Continue independent work when a provider is unavailable.
+```

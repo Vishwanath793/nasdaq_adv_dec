@@ -1,0 +1,29 @@
+{
+  "name": "nasdaq-adv-dec",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Nasdaq pre-market conviction analyzer and opening-window confirmation (free data, volume-first, paper only).",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "server": "node server/index.js",
+    "start": "node server/index.js",
+    "dev": "vite",
+    "build": "vite build",
+    "test": "node --test \"test/*.test.js\"",
+    "probe": "node src/core/probe.js",
+    "demo": "node src/core/cli.js demo",
+    "replay": "node src/core/cli.js replay",
+    "validate": "node src/core/cli.js validate",
+    "registry": "node src/core/cli.js registry"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^5.4.11"
+  }
+}

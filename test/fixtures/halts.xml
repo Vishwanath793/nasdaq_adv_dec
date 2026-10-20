@@ -1,0 +1,40 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:ndaq="http://www.nasdaqtrader.com/">
+  <channel>
+    <title>NASDAQTrader.com</title>
+    <link>http://www.nasdaqtrader.com</link>
+    <description>NASDAQ Trade Halts</description>
+    <copyright>Copyright 2026. All rights reserved.</copyright>
+    <pubDate>Tue, 20 Oct 2026 03:32:33 GMT</pubDate>
+    <ttl>1</ttl>
+    <ndaq:numItems>66</ndaq:numItems>
+    <item>
+      <title>MBRX</title>
+      <pubDate>Mon, 19 Oct 2026 04:00:00 GMT</pubDate>
+      <ndaq:HaltDate>10/19/2026</ndaq:HaltDate>
+      <ndaq:HaltTime>19:50:00.000</ndaq:HaltTime>
+      <ndaq:IssueSymbol>MBRX</ndaq:IssueSymbol>
+      <ndaq:IssueName>Moleculin Biotech, Inc. COM</ndaq:IssueName>
+      <ndaq:Market>NASDAQ</ndaq:Market>
+      <ndaq:ReasonCode>T1</ndaq:ReasonCode>
+      <ndaq:PauseThresholdPrice />
+      <ndaq:ResumptionDate />
+      <ndaq:ResumptionQuoteTime />
+      <ndaq:ResumptionTradeTime />
+      <description><![CDATA[<table width="100%" cellpadding="5"><tr><th align="left">Halt Date</th><th align="left">Halt Time</th><th align="left">Issue Symbol</th><th align="left">Issue Name</th><th align="left">Market</th><th align="left">Reason Code</th><th align="left">Pause Threshold Price</th><th align="left">Resumption Date</th><th align="left">Resumption Quote Time</th><th align="left">Resumption Trade Time</th></tr><tr><td valign="top">10/19/2026                    </td><td valign="top">19:50:00.000</td><td valign="top">MBRX</td><td valign="top">Moleculin Biotech, Inc. COM</td><td valign="top">NASDAQ</td><td valign="top">T1</td><td valign="top"></td><td valign="top"></td><td valign="top"></td><td valign="top"></td></tr></table>]]></description>
+    </item>
+    <item>
+      <title>REVBW</title>
+      <pubDate>Mon, 19 Oct 2026 04:00:00 GMT</pubDate>
+      <ndaq:HaltDate>10/19/2026</ndaq:HaltDate>
+      <ndaq:HaltTime>19:50:00.000</ndaq:HaltTime>
+      <ndaq:IssueSymbol>REVBW</ndaq:IssueSymbol>
+      <ndaq:IssueName>Revelation Biosciences Wt</ndaq:IssueName>
+      <ndaq:Market>NASDAQ</ndaq:Market>
+      <ndaq:ReasonCode>T1</ndaq:ReasonCode>
+      <ndaq:PauseThresholdPrice />
+      <ndaq:ResumptionDate />
+      <ndaq:ResumptionQuoteTime />
+      <ndaq:ResumptionTradeTime />
+      <description><![CDATA[<table width="100%" cellpadding="5"><tr><th align="left">Halt Date</th><th align="left">Halt Time</th><th align="left">Issue Symbol</th><th align="left">Issue Name</th><th align="left">Market</th><th align="left">Reason Code</th><th align="left">Pause Threshold Price</th><th align="left">Resumption Date</th><th align="left">Resumption Quote Time</th><th align="left">Resumption Trade Time</th></tr><tr><td valign="top">10/19/2026                    </td><td valign="top">19:50:00.000</td><td valign="top">REVBW</td><td valign="top">Revelation Biosciences Wt</td><td valign="top">NASDAQ</td><td valign="top">T1</td><td valign="top"></td><td valign="top"></td><td valign="top"></td><td valign="top"></td></tr></table>]]></description>
+    </item></channel></rss>
